@@ -1,8 +1,11 @@
-// "KYC Extractor" tab: PAN / Aadhaar / Bank passbook details via Claude's vision API.
+// "KYC Extractor" tab: PAN / Aadhaar / Bank passbook details.
+// Two engines: "Free · Offline" (built-in OCR, no key, nothing leaves the computer)
+// and "Claude AI" (Claude's vision API, needs a key, more accurate on hard photos).
 // Nothing is written to disk; everything lives in memory until "Clear all" or the app closes.
-import { kindOf, ext, thumbnailFor, normalizeImage, blobToBase64 } from './files.js';
+import { kindOf, ext, thumbnailFor, normalizeImage, blobToBase64, openPdf, renderPdfPage, canvasToBlob } from './files.js';
 import { $, toast, icon, setupDropzone, copyWithFeedback } from './ui.js';
 import { validateField } from './validate.js';
+import { parseKyc } from './kycParse.js';
 
 const MAX_DOCS = 5;
 const ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'pdf'];
@@ -27,19 +30,71 @@ let docs = []; // { id, file, thumb, status, result, card, run }
 let nextId = 1;
 let runToken = 0;
 
+let engine = 'free';
+let keyState = { hasKey: false };
+
+const store = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+};
+
 export function initKycTab({ openSettings }) {
   setupDropzone($('#kycDrop'), $('#kycInput'), addFiles);
 
+  engine = store.get('kycEngine') === 'ai' ? 'ai' : 'free';
+  document.querySelectorAll('#engineSeg button').forEach((b) =>
+    b.addEventListener('click', () => {
+      engine = b.dataset.engine;
+      store.set('kycEngine', engine);
+      hideError();
+      updateEngineUI();
+    })
+  );
+  window.addEventListener('keystatus', (e) => { keyState = e.detail; updateEngineUI(); });
+  window.addEventListener('resize', moveSegGlider);
+  updateEngineUI();
+
   $('#kycRun').addEventListener('click', async () => {
-    const st = await window.api.keyStatus();
-    if (!st.hasKey) {
-      showError('Add your Anthropic API key in Settings to start extracting.');
-      openSettings();
-      return;
+    if (engine === 'ai') {
+      const st = await window.api.keyStatus();
+      if (!st.hasKey) {
+        showError('Claude AI mode needs an Anthropic API key. Add one in Settings, or switch to Free · Offline mode, which needs no key.');
+        openSettings();
+        return;
+      }
     }
     runAll();
   });
   $('#kycClear').addEventListener('click', clearAll);
+}
+
+function moveSegGlider() {
+  const active = document.querySelector('#engineSeg button[aria-checked="true"]');
+  const glider = $('#engineSeg .seg-glider');
+  if (!active || !active.offsetWidth) return;
+  glider.style.width = `${active.offsetWidth}px`;
+  glider.style.transform = `translateX(${active.offsetLeft - 4}px)`;
+}
+
+function updateEngineUI() {
+  document.querySelectorAll('#engineSeg button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.engine === engine)));
+  requestAnimationFrame(moveSegGlider);
+  const free = engine === 'free';
+  $('#doubleCheckRow').hidden = free;
+  const pill = $('#keyPill');
+  if (free) {
+    pill.hidden = true;
+  } else {
+    pill.hidden = false;
+    pill.className = `pill ${keyState.hasKey ? 'ok' : 'missing'}`;
+    pill.textContent = keyState.hasKey ? '● Claude API connected' : '● Add API key to use Claude AI';
+  }
+  $('#engineNote').innerHTML = free
+    ? `${icon('lock')}<span><b>Free · Offline:</b> reads documents on this computer with built-in OCR. No key, no cost, and nothing is uploaded. Clear, straight, well-lit photos work best. <b>Always check the results</b> against the document.</span>`
+    : `${icon('spark')}<span><b>Claude AI:</b> uses Claude's vision model for the best accuracy on blurry or angled photos. Needs an Anthropic API key and costs a little per document.</span>`;
+  $('#privacyText').innerHTML = free
+    ? 'Documents never leave this computer and are never saved. They are gone when you press <b>Clear all</b> or close the app.'
+    : 'Documents are never saved. They are sent securely to the Claude API only to read them, and are gone when you press <b>Clear all</b> or close the app.';
 }
 
 function showError(msg) {
@@ -145,8 +200,12 @@ async function runAll() {
 async function processDoc(doc, doubleCheck, token) {
   let res;
   try {
-    const payload = await preparePayload(doc.file);
-    res = await window.api.kycExtract({ ...payload, doubleCheck });
+    if (engine === 'free') {
+      res = { ok: true, result: await offlineExtract(doc.file) };
+    } else {
+      const payload = await preparePayload(doc.file);
+      res = await window.api.kycExtract({ ...payload, doubleCheck });
+    }
   } catch (err) {
     res = { ok: false, error: err.message || 'Could not read this file.' };
   }
@@ -160,6 +219,51 @@ async function processDoc(doc, doubleCheck, token) {
   doc.status = 'done';
   doc.result = res.result;
   renderResultCard(doc);
+}
+
+// ---------- Free offline engine ----------
+// Reads the document with the built-in OCR (English + Hindi). If it can't tell what the
+// document is, it retries with the picture turned sideways / upside down, because phone
+// photos are often taken rotated.
+async function offlineExtract(file) {
+  let source;
+  if (kindOf(file) === 'pdf') {
+    const pdf = await openPdf(new Uint8Array(await file.arrayBuffer()));
+    try {
+      source = await renderPdfPage(await pdf.getPage(1), 2.5);
+    } finally {
+      pdf.loadingTask.destroy();
+    }
+  } else {
+    source = await normalizeImage(file, { maxSide: 3000, minSide: 1800 });
+    if (!source) throw new Error('This image could not be opened. Try saving it as JPG or PNG.');
+  }
+  const bitmap = await createImageBitmap(source);
+  let best = null;
+  try {
+    for (const angle of [0, 90, 270, 180]) {
+      const blob = angle === 0 ? source : await rotated(bitmap, angle);
+      const ocr = await window.api.ocrLines(new Uint8Array(await blob.arrayBuffer()), ['eng', 'hin'], `kyc-${Math.random()}`);
+      const parsed = parseKyc(ocr.lines || []);
+      if (!best || parsed.score > best.score) best = parsed;
+      if (parsed.document_type !== 'UNKNOWN') return parsed;
+    }
+  } finally {
+    bitmap.close();
+  }
+  return { ...best, note: 'The built-in reader could not recognise this document.' };
+}
+
+async function rotated(bitmap, angle) {
+  const canvas = document.createElement('canvas');
+  const sideways = angle === 90 || angle === 270;
+  canvas.width = sideways ? bitmap.height : bitmap.width;
+  canvas.height = sideways ? bitmap.width : bitmap.height;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((angle * Math.PI) / 180);
+  ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+  return canvasToBlob(canvas, 'image/png');
 }
 
 // Images are re-drawn upright (phone rotation) and kept under the API's size limit.
@@ -232,14 +336,18 @@ function renderResultCard(doc) {
       <div class="doc-note"></div>`;
     body.querySelector('.doc-file').textContent = doc.file.name;
     body.querySelector('.doc-note').textContent =
-      (note ? note + ' ' : '') + 'This does not look like a PAN card, Aadhaar card or bank passbook, so nothing was extracted. Try a clearer photo of the full document.';
+      (note ? note + ' ' : '') +
+      'This does not look like a PAN card, Aadhaar card or bank passbook, so nothing was extracted. Try a clearer, straight photo of the full document' +
+      (doc.result.engine === 'offline' ? ', or use Claude AI mode for difficult photos.' : '.');
     return;
   }
+  const engineTag = doc.result.engine === 'offline' ? '<span class="engine-tag" title="Read with the built-in offline OCR">Offline OCR</span>' : '';
 
   const anyUnreadable = spec.fields.some(([k]) => (fields[k]?.value ?? 'UNREADABLE') === 'UNREADABLE');
   body.innerHTML = `
     <div class="doc-head">
       <span class="doc-type">${spec.label}</span>
+      ${engineTag}
       <span class="doc-file"></span>
       <span class="status-badge ${anyUnreadable ? 'warn' : 'ok'}" title="${anyUnreadable ? 'Some fields could not be read' : 'Extracted'}">${anyUnreadable ? icon('alert') : icon('check')}</span>
     </div>

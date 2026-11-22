@@ -1,7 +1,7 @@
 {
   "name": "textsnap",
   "productName": "TextSnap",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Pull the text out of any image, PDF or document — with built-in OCR. Works offline on macOS and Windows.",
   "main": "src/main/main.js",
   "license": "MIT",
@@ -15,6 +15,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.12.0",
     "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/hin": "^1.0.0",
     "mammoth": "^1.13.0",
     "pdfjs-dist": "^6.5.438",
     "tesseract.js": "^7.0.0"
@@ -43,7 +44,7 @@
       "!**/node_modules/pdfjs-dist/types/**",
       "!**/node_modules/pdfjs-dist/web/**",
       "!**/node_modules/pdfjs-dist/**/*.map",
-      "!**/node_modules/@tesseract.js-data/eng/4.0.0/**"
+      "!**/node_modules/@tesseract.js-data/*/4.0.0/**"
     ],
     "asarUnpack": [
       "node_modules/tesseract.js/**",

@@ -23,8 +23,19 @@ TextSnap has two tabs:
 - 20 languages, including Hindi, Marathi, Gujarati, Bengali, Tamil, Telugu, Kannada, Punjabi and Urdu. English is built in; other languages download once (a few MB) the first time you use them.
 - Light and dark mode.
 
-### 2. KYC Extractor (uses the Claude vision API)
+### 2. KYC Extractor (free offline mode, or Claude AI)
 <p><img src="docs/kyc.png" width="760" alt="KYC Extractor screen" /></p>
+
+Choose how documents are read with the switch at the top of the tab:
+
+| | **Free · Offline** (default) | **Claude AI** |
+|---|---|---|
+| Cost | Free | A little per document (pay-as-you-go API credit) |
+| Needs an API key | No | Yes |
+| Where documents go | Never leave the computer | Sent to the Claude API to be read, never stored |
+| Best for | Clear, straight, well-lit photos and scans | Blurry, angled, glare-y or low-quality photos |
+
+Free mode reads the document with the built-in OCR (English + Hindi), then finds each field by its label and format. Sideways or upside-down photos are rotated automatically. It is less accurate than Claude AI on difficult photos, so **always check the results**. The format checks and Aadhaar checksum still flag most misread numbers.
 
 - Upload up to **5** documents at once (JPG, PNG or PDF). Each one gets a preview and a remove button.
 - Detects **PAN card**, **Aadhaar card** or **Bank passbook** automatically. If it isn't sure, it says **Unknown document** instead of guessing.
@@ -36,7 +47,7 @@ TextSnap has two tabs:
   - Text is copied exactly as printed. Spelling is never corrected or completed.
   - Anything blurred, cut off or half visible shows as **UNREADABLE** in red. It is never guessed.
   - A field that isn't printed on the card (e.g. father's name on many Aadhaar cards) shows **NOT FOUND**.
-  - **Double-check mode** (on by default) reads every document twice, separately. If the two reads disagree on any character, the field is marked *Low confidence* and *Please verify*.
+  - **Double-check mode** (Claude AI mode, on by default) reads every document twice, separately. If the two reads disagree on any character, the field is marked *Low confidence* and *Please verify*.
   - **Format checks:** PAN = 5 letters + 4 digits + 1 letter, Aadhaar = 12 digits (plus the official Aadhaar checksum, which catches a single misread digit), IFSC = 4 letters + 0 + 6 letters/digits. A failed check shows a *Please verify* warning. The value itself is never changed.
   - Aadhaar, PAN, IFSC and account numbers come out without spaces (e.g. `123412341234`), ready to paste into forms.
   - Answers come back as strict JSON, with a **High / Low** confidence on every field.
@@ -69,9 +80,12 @@ xattr -cr /Applications/TextSnap.app
 
 ---
 
-## Using the KYC Extractor: add an API key (one time)
+## Optional: add an API key for Claude AI mode
 
-The Extract Text tab needs no setup. The KYC tab uses Claude's vision model, which needs an Anthropic API key:
+**You don't need a key to use TextSnap.** The Extract Text tab and the KYC Extractor's **Free · Offline** mode work without one.
+A key is only needed for the KYC Extractor's **Claude AI** mode.
+
+A ChatGPT, Gemini or Claude.ai Pro subscription does **not** include an API key. API usage is billed separately, as prepaid credit. To get a key:
 
 1. Create a key at **[console.anthropic.com → API keys](https://console.anthropic.com/settings/keys)** and add some credit.
 2. In TextSnap, click the **⚙ Settings** button (top-right), paste the key, and click **Save**.
@@ -134,6 +148,7 @@ src/
     app.js      tabs, theme, settings
     textTab.js  Extract Text tab
     kycTab.js   KYC Extractor tab
+    kycParse.js free offline mode: finds PAN / Aadhaar / bank fields in OCR text
     validate.js PAN / Aadhaar (Verhoeff checksum) / IFSC format checks
     files.js    PDF rendering, image decoding, thumbnails
 build/icon.png  app icon (converted for macOS/Windows during the build)

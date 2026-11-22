@@ -125,9 +125,19 @@
             <p>Upload PAN cards, Aadhaar cards or bank passbooks. We'll detect each one and pull out the details for you.</p>
           </div>
           <div class="kyc-intro-actions">
+            <div class="seg" role="radiogroup" aria-label="Reading engine" id="engineSeg">
+              <button type="button" role="radio" data-engine="free" aria-checked="true">
+                <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Free · Offline
+              </button>
+              <button type="button" role="radio" data-engine="ai" aria-checked="false">
+                <svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg> Claude AI
+              </button>
+              <span class="seg-glider" aria-hidden="true"></span>
+            </div>
             <span class="pill" id="keyPill"></span>
           </div>
         </div>
+        <div class="engine-note" id="engineNote"></div>
 
         <label class="dropzone kyc-drop" id="kycDrop" tabindex="0">
           <input type="file" id="kycInput" multiple hidden accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" />
@@ -142,7 +152,7 @@
         <div class="thumb-strip" id="thumbStrip"></div>
 
         <div class="kyc-toolbar" id="kycToolbar" hidden>
-          <label class="switch-row compact" title="Reads every document twice and flags any field where the two reads disagree. More accurate, costs twice as much.">
+          <label class="switch-row compact" id="doubleCheckRow" title="Reads every document twice and flags any field where the two reads disagree. More accurate, costs twice as much.">
             <input type="checkbox" id="doubleCheck" checked />
             <span class="switch" aria-hidden="true"></span>
             <span>Double-check every field</span>
@@ -161,7 +171,7 @@
 
         <p class="kyc-privacy">
           <svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/></svg>
-          Documents are never saved. They are sent securely to the Claude API only to read them, and are gone when you press <b>Clear all</b> or close the app.
+          <span id="privacyText">Documents are never saved, and are gone when you press <b>Clear all</b> or close the app.</span>
         </p>
       </div>
     </section>
@@ -171,7 +181,7 @@
   <dialog id="settingsDialog" class="modal">
     <form method="dialog" class="modal-inner" id="settingsForm">
       <h2>Settings</h2>
-      <p class="muted">The <b>Extract Text</b> tab works offline and needs no setup. The <b>KYC Extractor</b> uses Claude's vision API, which needs an Anthropic API key.</p>
+      <p class="muted">You don't need a key for the <b>Extract Text</b> tab or for the KYC Extractor's <b>Free · Offline</b> mode. A key is only needed for the KYC Extractor's <b>Claude AI</b> mode, which is more accurate on difficult photos and costs a little per document.</p>
       <label class="field-label" for="apiKey">Anthropic API key</label>
       <div class="key-row">
         <input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" />

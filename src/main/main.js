@@ -75,9 +75,9 @@ function registerIpc() {
 
   ipcMain.handle('ocr:languages', () => ocr.languages());
 
-  ipcMain.handle('ocr:image', async (event, { bytes, langs, jobId }) => {
+  ipcMain.handle('ocr:image', async (event, { bytes, langs, jobId, withLines }) => {
     const send = (msg) => !event.sender.isDestroyed() && event.sender.send('ocr:progress', { jobId, ...msg });
-    return ocr.recognize(bytes, langs, send);
+    return ocr.recognize(bytes, langs, send, { withLines: !!withLines });
   });
 
   ipcMain.handle('docx:text', async (_e, { bytes }) => {

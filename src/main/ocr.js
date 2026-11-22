@@ -8,7 +8,7 @@ const { createWorker, OEM } = require('tesseract.js');
 // downloaded once (a few MB each) the first time they are used, then cached.
 const LANGUAGES = [
   { code: 'eng', name: 'English', bundled: true },
-  { code: 'hin', name: 'Hindi (हिन्दी)' },
+  { code: 'hin', name: 'Hindi (हिन्दी)', bundled: true },
   { code: 'mar', name: 'Marathi (मराठी)' },
   { code: 'guj', name: 'Gujarati (ગુજરાતી)' },
   { code: 'ben', name: 'Bengali (বাংলা)' },
@@ -55,9 +55,9 @@ class OcrEngine {
     if (!LANGUAGES.some((l) => l.code === code)) throw new Error(`Unknown language: ${code}`);
     const dest = path.join(this.langDir, `${code}.traineddata.gz`);
     if (fs.existsSync(dest)) return;
-    if (code === 'eng') {
-      // Copy the bundled English model out of the app package.
-      const src = path.join(path.dirname(require.resolve('@tesseract.js-data/eng')), '4.0.0_best_int', 'eng.traineddata.gz');
+    if (code === 'eng' || code === 'hin') {
+      // Copy the bundled English / Hindi model out of the app package.
+      const src = path.join(path.dirname(require.resolve(`@tesseract.js-data/${code}`)), '4.0.0_best_int', `${code}.traineddata.gz`);
       fs.writeFileSync(dest, fs.readFileSync(src));
       return;
     }
@@ -88,13 +88,24 @@ class OcrEngine {
   }
 
   // Jobs run one at a time so progress messages stay meaningful.
-  recognize(imageBytes, langs, onProgress) {
+  // withLines: also return every text line with its confidence (used by the free KYC mode).
+  recognize(imageBytes, langs, onProgress, { withLines = false } = {}) {
     const job = this.queue.then(async () => {
       this.onProgress = onProgress;
       try {
         const worker = await this._getWorker(langs && langs.length ? langs : ['eng']);
-        const { data } = await worker.recognize(Buffer.from(imageBytes));
-        return { text: tidy(data.text), confidence: Math.round(data.confidence || 0) };
+        const { data } = await worker.recognize(Buffer.from(imageBytes), {}, { text: true, blocks: withLines });
+        const result = { text: tidy(data.text), confidence: Math.round(data.confidence || 0) };
+        if (withLines) {
+          result.lines = [];
+          for (const block of data.blocks || [])
+            for (const para of block.paragraphs || [])
+              for (const line of para.lines || []) {
+                const text = (line.text || '').replace(/\s+/g, ' ').trim();
+                if (text) result.lines.push({ text, confidence: Math.round(line.confidence || 0) });
+              }
+        }
+        return result;
       } finally {
         this.onProgress = null;
       }

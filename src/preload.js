@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('api', {
   platform: process.platform,
   languages: () => ipcRenderer.invoke('ocr:languages'),
   ocrImage: (bytes, langs, jobId) => ipcRenderer.invoke('ocr:image', { bytes, langs, jobId }),
+  ocrLines: (bytes, langs, jobId) => ipcRenderer.invoke('ocr:image', { bytes, langs, jobId, withLines: true }),
   onOcrProgress: (cb) => {
     const listener = (_e, msg) => cb(msg);
     ipcRenderer.on('ocr:progress', listener);

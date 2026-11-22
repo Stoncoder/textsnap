@@ -52,9 +52,7 @@ requestAnimationFrame(() => selectTab(store.get('tab') || 'text'));
 const dlg = $('#settingsDialog');
 async function refreshKey() {
   const st = await window.api.keyStatus();
-  const pill = $('#keyPill');
-  pill.className = `pill ${st.hasKey ? 'ok' : 'missing'}`;
-  pill.textContent = st.hasKey ? '● Claude API connected' : '● Add API key to start';
+  window.dispatchEvent(new CustomEvent('keystatus', { detail: st }));
   const ks = $('#keyStatus');
   ks.className = `key-status ${st.hasKey ? 'ok' : ''}`;
   ks.textContent = st.hasKey ? `✓ Key saved (${st.hint})${st.fromEnv ? ' — from ANTHROPIC_API_KEY' : ''}` : 'No key saved yet.';
