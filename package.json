@@ -1,7 +1,7 @@
 {
   "name": "textsnap",
   "productName": "TextSnap",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Pull the text out of any image, PDF or document — with built-in OCR. Works offline on macOS and Windows.",
   "main": "src/main/main.js",
   "license": "MIT",
@@ -62,8 +62,10 @@
       ],
       "category": "public.app-category.productivity",
       "icon": "build/icon.png",
-      "identity": null,
-      "artifactName": "TextSnap-${version}-mac.${ext}"
+      "identity": "-",
+      "artifactName": "TextSnap-${version}-mac.${ext}",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "dmg": {
       "title": "TextSnap",

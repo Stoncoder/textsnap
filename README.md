@@ -66,8 +66,13 @@ Download the installer from the **[Releases](../../releases)** page.
 ### macOS
 1. Download **`TextSnap-x.y.z-mac.dmg`** (works on Apple Silicon and Intel Macs).
 2. Open it and drag **TextSnap** into **Applications**.
-3. The first time only: **right-click TextSnap → Open → Open**. The app isn't signed with a paid Apple certificate, so macOS asks once.
-   - If macOS says the app *"is damaged"*, open **Terminal** and run the command below, then open the app again.
+3. Open TextSnap. The first time only, macOS says it can't verify the app, because it isn't signed with a paid Apple developer certificate. Click **Done** (or **OK**), then:
+   - open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the TextSnap message;
+   - confirm with **Open Anyway** and your password.
+
+   After that it opens normally, like any other app.
+   - On older macOS versions you can instead **right-click TextSnap → Open → Open**.
+   - If macOS ever says the app *"is damaged"*, open **Terminal**, run the command below, then open the app again.
 
 ```bash
 xattr -cr /Applications/TextSnap.app
