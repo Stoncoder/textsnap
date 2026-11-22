@@ -6,6 +6,7 @@ import { kindOf, ext, thumbnailFor, normalizeImage, blobToBase64, openPdf, rende
 import { $, toast, icon, setupDropzone, copyWithFeedback } from './ui.js';
 import { validateField } from './validate.js';
 import { parseKyc } from './kycParse.js';
+import { cleanLines } from './format.js';
 
 const MAX_DOCS = 5;
 const ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'pdf'];
@@ -244,7 +245,7 @@ async function offlineExtract(file) {
     for (const angle of [0, 90, 270, 180]) {
       const blob = angle === 0 ? source : await rotated(bitmap, angle);
       const ocr = await window.api.ocrLines(new Uint8Array(await blob.arrayBuffer()), ['eng', 'hin'], `kyc-${Math.random()}`);
-      const parsed = parseKyc(ocr.lines || []);
+      const parsed = parseKyc(kycLines(ocr.lines || []));
       if (!best || parsed.score > best.score) best = parsed;
       if (parsed.document_type !== 'UNKNOWN') return parsed;
     }
@@ -252,6 +253,12 @@ async function offlineExtract(file) {
     bitmap.close();
   }
   return { ...best, note: 'The built-in reader could not recognise this document.' };
+}
+
+// Removes specks (e.g. from the photo on the card) before the fields are read, and scores
+// each line by its weakest remaining word.
+function kycLines(lines) {
+  return cleanLines(lines).map((l) => ({ text: l.text, confidence: Math.min(...l.words.map((w) => w.conf)) }));
 }
 
 async function rotated(bitmap, angle) {
