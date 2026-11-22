@@ -1,0 +1,104 @@
+{
+  "name": "textsnap",
+  "productName": "TextSnap",
+  "version": "1.0.0",
+  "description": "Pull the text out of any image, PDF or document — with built-in OCR. Works offline on macOS and Windows.",
+  "main": "src/main/main.js",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist": "electron-builder --mac --win"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.12.0",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.5.438",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "author": "TextSnap",
+  "engines": {
+    "node": ">=20"
+  },
+  "build": {
+    "appId": "app.textsnap.desktop",
+    "productName": "TextSnap",
+    "copyright": "Copyright © 2026 TextSnap",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!**/node_modules/@napi-rs/**",
+      "!**/node_modules/pdfjs-dist/legacy/**",
+      "!**/node_modules/pdfjs-dist/types/**",
+      "!**/node_modules/pdfjs-dist/web/**",
+      "!**/node_modules/pdfjs-dist/**/*.map",
+      "!**/node_modules/@tesseract.js-data/eng/4.0.0/**"
+    ],
+    "asarUnpack": [
+      "node_modules/tesseract.js/**",
+      "node_modules/tesseract.js-core/**",
+      "node_modules/@tesseract.js-data/**"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": null,
+      "artifactName": "TextSnap-${version}-mac.${ext}"
+    },
+    "dmg": {
+      "title": "TextSnap",
+      "contents": [
+        {
+          "x": 150,
+          "y": 190
+        },
+        {
+          "x": 410,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "TextSnap-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "shortcutName": "TextSnap"
+    }
+  }
+}
