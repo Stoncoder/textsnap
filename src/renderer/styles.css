@@ -264,7 +264,10 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .result-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .result-title { font-size: 16px; font-weight: 700; max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .result-meta { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
-.result-actions { display: flex; gap: 8px; }
+.result-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.view-seg { display: flex; padding: 3px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
+.view-seg button { padding: 6px 12px; border-radius: 9px; font-weight: 650; font-size: 12.5px; color: var(--text-2); transition: background .2s, color .2s; }
+.view-seg button[aria-checked="true"] { background: var(--surface-solid); color: var(--accent); box-shadow: var(--shadow-sm); }
 .result-body { position: relative; flex: 1; min-height: 0; }
 #output {
   width: 100%; height: 100%; resize: none; border: 0; outline: none;
@@ -438,6 +441,7 @@ select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px v
 .toast {
   position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 30px); opacity: 0;
   padding: 11px 18px; border-radius: 14px; font-weight: 600;
+  max-width: min(560px, calc(100vw - 32px)); text-align: center; line-height: 1.4;
   background: var(--text); color: var(--bg); box-shadow: var(--shadow-lg);
   transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .35s; pointer-events: none; z-index: 50;
 }

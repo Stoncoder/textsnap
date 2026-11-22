@@ -1,6 +1,7 @@
 // "Extract Text" tab: any file in, plain text out. Fully offline.
-import { kindOf, ext, openPdf, pdfPageText, renderPdfPage, normalizeImage, htmlToText, rtfToText, formatBytes } from './files.js';
-import { $, toast, copyWithFeedback, icon, setupDropzone } from './ui.js';
+import { kindOf, ext, openPdf, pdfPageText, renderPdfPage, normalizeImage, htmlToText, rtfToText, formatBytes, canvasToBlob } from './files.js';
+import { cleanLines, toPlainText, formatFields, mrzLinesFrom, readMrz } from './format.js';
+import { $, toast, copyWithFeedback, icon, setupDropzone, snapshotFiles } from './ui.js';
 
 const items = []; // { id, file, kind, status, text, error, progress, label, el }
 let selectedId = null;
@@ -18,7 +19,8 @@ export function initTextTab() {
     const files = [...(e.clipboardData?.files || [])];
     if (files.length) {
       e.preventDefault();
-      addFiles(files.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `Pasted image ${i + 1}.png`, { type: f.type || 'image/png' }))));
+      const named = files.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `Pasted image ${i + 1}.png`, { type: f.type || 'image/png' })));
+      snapshotFiles(named).then((ready) => ready.length && addFiles(ready));
     }
   });
 
@@ -53,13 +55,25 @@ export function initTextTab() {
   const out = $('#output');
   out.addEventListener('input', () => {
     const it = items.find((x) => x.id === selectedId);
-    if (it) it.text = out.value;
+    if (it) {
+      if (showingFormatted(it)) it.formatted = out.value;
+      else it.text = out.value;
+    }
     updateStats();
   });
 
+  document.querySelectorAll('#viewSeg button').forEach((b) =>
+    b.addEventListener('click', () => {
+      const it = items.find((x) => x.id === selectedId);
+      if (!it) return;
+      it.view = b.dataset.view;
+      showSelected();
+    })
+  );
+
   $('#copyBtn').addEventListener('click', (e) => copyWithFeedback(e.currentTarget, out.value, 'Copied! Paste it anywhere.'));
   $('#copyAllBtn').addEventListener('click', () => {
-    const all = items.filter((x) => x.status === 'done').map((x) => `===== ${x.file.name} =====\n${x.text}`).join('\n\n');
+    const all = items.filter((x) => x.status === 'done').map((x) => `===== ${x.file.name} =====\n${viewText(x)}`).join('\n\n');
     window.api.copy(all).then(() => toast('Copied text from all files'));
   });
   $('#saveBtn').addEventListener('click', async () => {
@@ -165,11 +179,69 @@ async function run() {
   }
 }
 
+// OCR one image and return clean plain text, plus a "Field: value" layout when the
+// picture is an ID card / form, and the decoded passport machine-readable zone (MRZ).
 async function ocrBlob(it, blob, langs) {
   it.activeJob = `${it.id}-${Math.random().toString(36).slice(2)}`;
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  const r = await window.api.ocrImage(bytes, langs, it.activeJob);
-  return r.text;
+  const r = await window.api.ocrLines(bytes, langs, it.activeJob);
+  const clean = cleanLines(r.lines || []);
+  const plain = toPlainText(clean);
+  let formatted = formatFields(clean);
+
+  const firstMrz = mrzLinesFrom(clean);
+  if (firstMrz.length) {
+    let secondMrz = [];
+    try {
+      const mrzRows = clean.filter((l) => l.mrz);
+      it.label = 'Reading the machine-readable zone…';
+      // Two differently prepared crops; the reader keeps whichever passes its check digits.
+      for (const variant of [
+        { width: 2400, filter: 'grayscale(1) contrast(1.6)' },
+        { width: 1600, filter: 'grayscale(1) contrast(2.2) brightness(1.1)' },
+      ]) {
+        const crop = await cropForMrz(blob, mrzRows, variant);
+        if (!crop) break;
+        const r2 = await window.api.ocrLines(new Uint8Array(await crop.arrayBuffer()), ['eng'], it.activeJob, {
+          whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
+          psm: '6',
+        });
+        secondMrz.push(...mrzLinesFrom(r2.lines || []));
+      }
+    } catch {
+      /* second pass is a bonus; ignore failures */
+    }
+    const mrz = readMrz(secondMrz, firstMrz);
+    if (mrz) formatted = `${formatted || plain}\n\n${mrz}`;
+  }
+  return { plain, formatted };
+}
+
+// Cuts out the MRZ strip, enlarged and in high-contrast grey, for a second, stricter read.
+async function cropForMrz(blob, rows, { width = 2400, filter = 'grayscale(1) contrast(1.6)' } = {}) {
+  if (!rows.length) return null;
+  const bmp = await createImageBitmap(blob);
+  try {
+    const pad = 12;
+    const x0 = Math.max(0, Math.min(...rows.map((l) => l.box.x0)) - pad * 3);
+    const y0 = Math.max(0, Math.min(...rows.map((l) => l.box.y0)) - pad);
+    const x1 = Math.min(bmp.width, Math.max(...rows.map((l) => l.box.x1)) + pad * 3);
+    const y1 = Math.min(bmp.height, Math.max(...rows.map((l) => l.box.y1)) + pad);
+    const w = x1 - x0;
+    const h = y1 - y0;
+    if (w < 50 || h < 10) return null;
+    const scale = Math.min(3, Math.max(1, width / w));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.filter = filter;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bmp, x0, y0, w, h, 0, 0, canvas.width, canvas.height);
+    return await canvasToBlob(canvas, 'image/png');
+  } finally {
+    bmp.close();
+  }
 }
 
 async function extract(it) {
@@ -185,13 +257,17 @@ async function extract(it) {
   if (kind === 'image') {
     it.method = 'OCR';
     const blob = (await normalizeImage(file)) || file; // TIFF etc. go straight to the OCR engine
-    return ocrBlob(it, blob, langs);
+    const r = await ocrBlob(it, blob, langs);
+    it.formatted = r.formatted;
+    return r.plain;
   }
   // PDF: use the text stored in the PDF; fall back to OCR for scanned pages.
   const doc = await openPdf(new Uint8Array(await file.arrayBuffer()));
   try {
     const force = $('#forceOcr').checked;
     const parts = [];
+    const formattedParts = [];
+    let anyFormatted = false;
     let ocrPages = 0;
     for (let p = 1; p <= doc.numPages; p++) {
       if (it.cancelled) break;
@@ -204,14 +280,19 @@ async function extract(it) {
       if (it.id === selectedId) showProgress(it);
       const page = await doc.getPage(p);
       let text = force ? '' : await pdfPageText(page);
+      let formatted = null;
       if (text.replace(/\s/g, '').length < 25) {
         const img = await renderPdfPage(page, 2.5);
-        text = await ocrBlob(it, img, langs);
+        ({ plain: text, formatted } = await ocrBlob(it, img, langs));
         ocrPages++;
       }
       page.cleanup();
-      parts.push(doc.numPages > 1 ? `— Page ${p} —\n${text}` : text);
+      const head = doc.numPages > 1 ? `— Page ${p} —\n` : '';
+      parts.push(head + text);
+      formattedParts.push(head + (formatted || text));
+      if (formatted) anyFormatted = true;
     }
+    it.formatted = anyFormatted ? formattedParts.join('\n\n').trim() : null;
     it.method = ocrPages === 0 ? `${doc.numPages} page${doc.numPages > 1 ? 's' : ''}` : `${doc.numPages} page${doc.numPages > 1 ? 's' : ''}, ${ocrPages} scanned`;
     return parts.join('\n\n').trim();
   } finally {
@@ -237,10 +318,16 @@ function showSelected() {
   $('#emptyState').hidden = !!it;
   $('#progressOverlay').hidden = true;
   out.readOnly = !done;
-  out.value = done ? it.text : '';
+  out.value = done ? viewText(it) : '';
   out.placeholder = done && !it.text ? 'No text was found in this file. If it is a photo, try a sharper, well-lit picture.' : '';
-  $('#copyBtn').disabled = !done || !it.text;
-  $('#saveBtn').disabled = !done || !it.text;
+  $('#copyBtn').disabled = !done || !out.value;
+  $('#saveBtn').disabled = !done || !out.value;
+  const seg = $('#viewSeg');
+  seg.hidden = !(done && it.formatted);
+  if (!seg.hidden) {
+    const view = showingFormatted(it) ? 'formatted' : 'plain';
+    seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.view === view)));
+  }
   const doneCount = items.filter((x) => x.status === 'done').length;
   $('#copyAllBtn').hidden = doneCount < 2;
   $('#copyAllBtn').disabled = doneCount < 2;
@@ -258,6 +345,10 @@ function showSelected() {
   }
   updateStats();
 }
+
+// Formatted view (Field: value) is shown by default whenever the app could build one.
+const showingFormatted = (it) => !!it.formatted && it.view !== 'plain';
+const viewText = (it) => (showingFormatted(it) ? it.formatted : it.text);
 
 const countWords = (t) => (t.trim() ? t.trim().split(/\s+/).length : 0);
 function updateStats() {

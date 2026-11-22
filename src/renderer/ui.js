@@ -20,7 +20,7 @@ export function toast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), Math.max(2200, msg.length * 55));
 }
 
 export async function copyWithFeedback(btn, text, message = 'Copied') {
@@ -36,8 +36,39 @@ export async function copyWithFeedback(btn, text, message = 'Copied') {
   }, 1500);
 }
 
+// Copies dropped/pasted files into memory straight away. Some apps (WhatsApp, Messages,
+// Photos, browsers) hand over a temporary file that disappears a moment later, which
+// made reading it fail with "the requested file could not be read".
+export async function snapshotFiles(files) {
+  const ok = [];
+  const failed = [];
+  await Promise.all(
+    files.map(async (f) => {
+      try {
+        const bytes = await f.arrayBuffer();
+        ok.push(new File([bytes], f.name || 'Pasted image.png', { type: f.type, lastModified: f.lastModified }));
+      } catch {
+        failed.push(f.name || 'file');
+      }
+    })
+  );
+  // keep the user's original order
+  ok.sort((a, b) => files.findIndex((f) => f.name === a.name) - files.findIndex((f) => f.name === b.name));
+  if (failed.length) {
+    toast(
+      `Couldn't open ${failed.length === 1 ? `"${failed[0]}"` : `${failed.length} files`}. ` +
+        'If you dragged it from WhatsApp, Photos or a browser, save it to your computer first, then add that file.'
+    );
+  }
+  return ok;
+}
+
 // Click-to-choose + drag-and-drop with a glow while dragging.
-export function setupDropzone(zone, input, onFiles) {
+export function setupDropzone(zone, input, onFilesRaw) {
+  const onFiles = async (files) => {
+    const ready = await snapshotFiles(files);
+    if (ready.length) onFilesRaw(ready);
+  };
   let depth = 0;
   zone.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }

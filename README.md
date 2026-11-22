@@ -19,6 +19,8 @@ TextSnap has two tabs:
 - **OCR built in.** Photos, screenshots and scanned PDFs are read on your computer, with nothing uploaded.
 - Digital PDFs are read directly (fast and exact). Scanned pages switch to OCR automatically.
 - **Paste a screenshot** with <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>V</kbd>.
+- **Formatted view** for ID cards, passports and forms. Each printed label is paired with its value (`Surname: FARR`, `Date of birth: 19 MAY 68` …), and stray marks from photo backgrounds and holograms are filtered out. Switch to **Plain text** at any time.
+- **Passports:** the machine-readable zone (the `<<<` lines) is decoded, and the document number, date of birth and expiry date are verified with their check digits (✓ / ⚠).
 - Edit the text, then **Copy** with one click or **Save** as a `.txt` file.
 - 20 languages, including Hindi, Marathi, Gujarati, Bengali, Tamil, Telugu, Kannada, Punjabi and Urdu. English is built in; other languages download once (a few MB) the first time you use them.
 - Light and dark mode.
@@ -154,6 +156,7 @@ src/
     textTab.js  Extract Text tab
     kycTab.js   KYC Extractor tab
     kycParse.js free offline mode: finds PAN / Aadhaar / bank fields in OCR text
+    format.js   noise filter, "Label: value" layout, passport MRZ reader
     validate.js PAN / Aadhaar (Verhoeff checksum) / IFSC format checks
     files.js    PDF rendering, image decoding, thumbnails
 build/icon.png  app icon (converted for macOS/Windows during the build)

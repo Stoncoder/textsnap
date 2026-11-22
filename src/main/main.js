@@ -75,9 +75,13 @@ function registerIpc() {
 
   ipcMain.handle('ocr:languages', () => ocr.languages());
 
-  ipcMain.handle('ocr:image', async (event, { bytes, langs, jobId, withLines }) => {
+  ipcMain.handle('ocr:image', async (event, { bytes, langs, jobId, withLines, whitelist, psm }) => {
     const send = (msg) => !event.sender.isDestroyed() && event.sender.send('ocr:progress', { jobId, ...msg });
-    return ocr.recognize(bytes, langs, send, { withLines: !!withLines });
+    return ocr.recognize(bytes, langs, send, {
+      withLines: !!withLines,
+      whitelist: typeof whitelist === 'string' ? whitelist.slice(0, 200) : '',
+      psm: /^\d{1,2}$/.test(String(psm || '')) ? String(psm) : '',
+    });
   });
 
   ipcMain.handle('docx:text', async (_e, { bytes }) => {
