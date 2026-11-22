@@ -171,11 +171,11 @@ function parseAadhaar(lines) {
   if (addrIdx < 0) addrIdx = lines.findIndex((l) => /पता/.test(l.text));
   let addressLines = [];
   if (addrIdx >= 0) {
-    for (let i = addrIdx; i < Math.min(lines.length, addrIdx + 8); i++) {
+    for (let i = addrIdx; i < Math.min(lines.length, addrIdx + 12); i++) {
       let t = i === addrIdx ? lines[i].text.replace(/.*?(address|पता)\s*[:\-]?/i, '') : lines[i].text;
       t = englishPart(t);
       if (t) addressLines.push({ text: t, line: lines[i] });
-      if (/\b\d{6}\b/.test(lines[i].text)) break;
+      if (/\b\d{6}\b/.test(t)) break; // English PIN code ends the address
     }
   }
   const addressText = addressLines.map((a) => a.text).join(', ').replace(/,\s*,/g, ',');

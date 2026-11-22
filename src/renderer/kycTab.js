@@ -2,7 +2,7 @@
 // Two engines: "Free · Offline" (built-in OCR, no key, nothing leaves the computer)
 // and "Claude AI" (Claude's vision API, needs a key, more accurate on hard photos).
 // Nothing is written to disk; everything lives in memory until "Clear all" or the app closes.
-import { kindOf, ext, thumbnailFor, normalizeImage, blobToBase64, openPdf, renderPdfPage, canvasToBlob } from './files.js';
+import { kindOf, ext, thumbnailFor, normalizeImage, blobToBase64, openPdf, renderPdfPage, rotateBitmap } from './files.js';
 import { $, toast, icon, setupDropzone, copyWithFeedback } from './ui.js';
 import { validateField } from './validate.js';
 import { parseKyc } from './kycParse.js';
@@ -243,7 +243,7 @@ async function offlineExtract(file) {
   let best = null;
   try {
     for (const angle of [0, 90, 270, 180]) {
-      const blob = angle === 0 ? source : await rotated(bitmap, angle);
+      const blob = angle === 0 ? source : await rotateBitmap(bitmap, angle);
       const ocr = await window.api.ocrLines(new Uint8Array(await blob.arrayBuffer()), ['eng', 'hin'], `kyc-${Math.random()}`);
       const parsed = parseKyc(kycLines(ocr.lines || []));
       if (!best || parsed.score > best.score) best = parsed;
@@ -257,20 +257,26 @@ async function offlineExtract(file) {
 
 // Removes specks (e.g. from the photo on the card) before the fields are read, and scores
 // each line by its weakest remaining word.
+// Cards often print Hindi and English side by side, which OCR reads as one line;
+// each line is split into its columns (big horizontal gaps) so they're read separately.
 function kycLines(lines) {
-  return cleanLines(lines).map((l) => ({ text: l.text, confidence: Math.min(...l.words.map((w) => w.conf)) }));
-}
-
-async function rotated(bitmap, angle) {
-  const canvas = document.createElement('canvas');
-  const sideways = angle === 90 || angle === 270;
-  canvas.width = sideways ? bitmap.height : bitmap.width;
-  canvas.height = sideways ? bitmap.width : bitmap.height;
-  const ctx = canvas.getContext('2d');
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate((angle * Math.PI) / 180);
-  ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
-  return canvasToBlob(canvas, 'image/png');
+  const out = [];
+  for (const l of cleanLines(lines)) {
+    const words = [...l.words].sort((a, b) => a.x0 - b.x0);
+    const heights = words.map((w) => w.y1 - w.y0).sort((a, b) => a - b);
+    const h = heights[Math.floor(heights.length / 2)] || 20;
+    let seg = [];
+    const flush = () => {
+      if (seg.length) out.push({ text: seg.map((w) => w.text).join(' '), confidence: Math.min(...seg.map((w) => w.conf)) });
+      seg = [];
+    };
+    for (const w of words) {
+      if (seg.length && w.x0 - seg[seg.length - 1].x1 > 3 * h) flush();
+      seg.push(w);
+    }
+    flush();
+  }
+  return out;
 }
 
 // Images are re-drawn upright (phone rotation) and kept under the API's size limit.
@@ -473,7 +479,7 @@ function typeInto(input, text, delay, after) {
       i = Math.min(text.length, i + step);
       input.value = text.slice(0, i);
       after?.();
-      if (i < text.length) requestAnimationFrame(() => setTimeout(tick, 16));
+      if (i < text.length) setTimeout(tick, 16); // plain timer: finishes even if the window is in the background
     };
     tick();
   }, delay);

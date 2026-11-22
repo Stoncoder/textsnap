@@ -1,5 +1,5 @@
 // "Extract Text" tab: any file in, plain text out. Fully offline.
-import { kindOf, ext, openPdf, pdfPageText, renderPdfPage, normalizeImage, htmlToText, rtfToText, formatBytes, canvasToBlob } from './files.js';
+import { kindOf, ext, openPdf, pdfPageText, renderPdfPage, normalizeImage, htmlToText, rtfToText, formatBytes, canvasToBlob, rotateBitmap } from './files.js';
 import { cleanLines, toPlainText, formatFields, mrzLinesFrom, readMrz } from './format.js';
 import { $, toast, copyWithFeedback, icon, setupDropzone, snapshotFiles } from './ui.js';
 
@@ -183,9 +183,37 @@ async function run() {
 // picture is an ID card / form, and the decoded passport machine-readable zone (MRZ).
 async function ocrBlob(it, blob, langs) {
   it.activeJob = `${it.id}-${Math.random().toString(36).slice(2)}`;
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const r = await window.api.ocrLines(bytes, langs, it.activeJob);
-  const clean = cleanLines(r.lines || []);
+  const read = async (b) => (await window.api.ocrLines(new Uint8Array(await b.arrayBuffer()), langs, it.activeJob)).lines || [];
+  let lines = await read(blob);
+
+  // Photo taken sideways or upside down? If hardly anything readable came out,
+  // try the other three orientations and keep the one that reads best.
+  if (readability(lines) < 60) {
+    let bitmap = null;
+    try {
+      bitmap = await createImageBitmap(blob);
+    } catch {
+      /* format the browser can't draw (e.g. TIFF): keep the first result */
+    }
+    if (bitmap) {
+      try {
+        let best = { score: readability(lines), lines, blob };
+        for (const angle of [90, 270, 180]) {
+          it.label = 'Checking if the picture is sideways…';
+          const turned = await rotateBitmap(bitmap, angle);
+          const l = await read(turned);
+          const score = readability(l);
+          if (score > best.score) best = { score, lines: l, blob: turned };
+          if (score >= 150) break; // clearly readable now
+        }
+        ({ lines, blob } = best);
+      } finally {
+        bitmap.close();
+      }
+    }
+  }
+
+  const clean = cleanLines(lines);
   const plain = toPlainText(clean);
   let formatted = formatFields(clean);
 
@@ -215,6 +243,14 @@ async function ocrBlob(it, blob, langs) {
     if (mrz) formatted = `${formatted || plain}\n\n${mrz}`;
   }
   return { plain, formatted };
+}
+
+// How much clearly-read text there is: letters in confident words of 3+ characters.
+function readability(lines) {
+  let n = 0;
+  for (const l of lines)
+    for (const w of l.words || []) if (w.conf >= 80 && (w.text.match(/[\p{L}\p{N}]/gu) || []).length >= 3) n += w.text.length;
+  return n;
 }
 
 // Cuts out the MRZ strip, enlarged and in high-contrast grey, for a second, stricter read.

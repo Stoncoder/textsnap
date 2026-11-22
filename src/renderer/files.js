@@ -84,6 +84,19 @@ export async function normalizeImage(blob, { maxSide = 4000, minSide = 1200, typ
   return canvasToBlob(canvas, type, quality);
 }
 
+// Returns the picture turned by 90 / 180 / 270 degrees, as PNG.
+export async function rotateBitmap(bitmap, angle) {
+  const canvas = document.createElement('canvas');
+  const sideways = angle === 90 || angle === 270;
+  canvas.width = sideways ? bitmap.height : bitmap.width;
+  canvas.height = sideways ? bitmap.width : bitmap.height;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((angle * Math.PI) / 180);
+  ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+  return canvasToBlob(canvas, 'image/png');
+}
+
 export async function thumbnailFor(file) {
   if (kindOf(file) === 'pdf') {
     const doc = await openPdf(new Uint8Array(await file.arrayBuffer()));
